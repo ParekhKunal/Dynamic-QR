@@ -1,7 +1,8 @@
-const validator = require('validator')
-const bcrypt = require('bcrypt')
 
 const dbConn = require('../db/index.js')
+
+const sendMail = require('../services/mailSend.js')
+
 const { passwordEncrypt, passwordDecrypt } = require('../utilities/passwordEncryptDecrypt.js')
 
 
@@ -14,14 +15,43 @@ async function userRegister(req, res) {
     const { firstName, lastName, email, password } = req.body;
 
     try {
+        //Encrypt the password
         const hashedPassword = await passwordEncrypt(password)
 
+        //Insert Into Database
         const insertQuery = 'INSERT INTO users (firstName, lastName, email, password) VALUES (?, ?, ?, ?)';
-
         const [result] = await dbConn.execute(insertQuery, [firstName, lastName, email, hashedPassword]);
 
-        return res.status(201).json({ "status": "success", "user": `User Register Successfully with userId: ${result.insertId}` })
+        //Check if the user was inserted successfully
+        if (result.affectedRows > 0) {
 
+            //Send registration email to the user
+            const mailOptions = {
+                to: email,
+                subject: "Registration",
+                html: `Hello ${firstName} ${lastName},<br><br><b>Thanks For Registration</b><br><br>Best Regards,<br>The Team`
+            };
+
+            const mailResult = await sendMail(mailOptions);
+
+            if (mailResult.success) {
+                return res.status(201).json({
+                    "status": "success",
+                    "message": `User registered successfully with userId: ${result.insertId}, email sent successfully.`
+                });
+            } else {
+                // If mail sending failed, you might want to delete the created user or handle it differently
+                return res.status(500).json({
+                    "status": "failure",
+                    "message": "User registered, but failed to send email."
+                });
+            }
+        } else {
+            return res.status(500).json({
+                "status": "failure",
+                "message": "Failed to register user."
+            });
+        }
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: "Failed to register user" });
